@@ -75,10 +75,11 @@ io.close()
 
 Running this Poc, the router Crash and is hijacked to 0x12345678. this suggests that the excessively long file path triggered a stack overflow.
 
-![](./img/7.png)
+![](./img/3.png)
 
 
 ### Attack
 
 Construct a utilization script that changes the value of the password in memory to admin (the default), triggering the router to reset the password.
 
+[Attack vedio](./attack.mp4)
