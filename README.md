@@ -80,6 +80,6 @@ Running this Poc, the router Crash and is hijacked to 0x12345678. this suggests 
 
 ### Attack
 
-Construct a utilization script that changes the value of the password in memory to admin (the default), triggering the router to reset the password.
+Construct a exploitation script that changes the value of the password in memory to admin (the default), triggering the router to reset the password.
 
 [Attack vedio](./attack.mp4)
