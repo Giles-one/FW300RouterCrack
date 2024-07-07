@@ -82,4 +82,7 @@ Running this Poc, the router Crash and is hijacked to 0x12345678. this suggests 
 
 Construct a exploitation script that changes the value of the password in memory to admin (the default), triggering the router to reset the password.
 
+
+https://github.com/Giles-one/FW300RouterCrack/assets/71769243/5f8e8165-ef9a-4f62-b566-514864aa2543
+
 [Attack vedio](./attack.mp4)
