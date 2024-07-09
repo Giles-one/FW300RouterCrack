@@ -16,7 +16,7 @@ DECIMAL       HEXADECIMAL     DESCRIPTION
 ```
 We can see that there is a uimage with a header at 0x3A94, a uImage (uboot image) of size 37958, and a loaded address of 0x80010000, and processor architecture mips (big endian). So we dump the uboot and decompress it.
 ```
-$ dd if=MX25L8005_20230813_224125.BIN of=uboot.bin.lzma $ $ bs=1 skip=$((0x3A94 + 64)) count=37958
+$ dd if=MX25L8005_20230813_224125.BIN of=uboot.bin.lzma bs=1 skip=$((0x3A94 + 64)) count=37958
 $ lzma -d ./uboot.bin.lzma
 ```
 
